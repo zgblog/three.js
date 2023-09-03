@@ -12,10 +12,15 @@
 	<body>
 		<link rel="stylesheet" href="css/main.css">
 
-		<script src="../examples/jsm/libs/draco/draco_encoder.js"></script>
 
 		<link rel="stylesheet" href="js/libs/codemirror/codemirror.css">
 		<link rel="stylesheet" href="js/libs/codemirror/theme/monokai.css">
+		<link rel="stylesheet" href="js/libs/codemirror/addon/dialog.css">
+		<link rel="stylesheet" href="js/libs/codemirror/addon/show-hint.css">
+		<link rel="stylesheet" href="js/libs/codemirror/addon/tern.css">
+
+		<script src="../examples/jsm/libs/draco/draco_encoder.js"></script>
+
 		<script src="js/libs/codemirror/codemirror.js"></script>
 		<script src="js/libs/codemirror/mode/javascript.js"></script>
 		<script src="js/libs/codemirror/mode/glsl.js"></script>
@@ -25,9 +30,7 @@
 
 		<script src="js/libs/ffmpeg.min.js" defer></script>
 
-		<link rel="stylesheet" href="js/libs/codemirror/addon/dialog.css">
-		<link rel="stylesheet" href="js/libs/codemirror/addon/show-hint.css">
-		<link rel="stylesheet" href="js/libs/codemirror/addon/tern.css">
+		
 
 		<script src="js/libs/codemirror/addon/dialog.js"></script>
 		<script src="js/libs/codemirror/addon/show-hint.js"></script>
@@ -81,13 +84,14 @@
 
 			};
 
-			//
 
 			const editor = new Editor();
 
 			window.editor = editor; // Expose editor to Console
 			window.THREE = THREE; // Expose THREE to APP Scripts and Console
 			window.VRButton = VRButton; // Expose VRButton to APP Scripts
+
+			//#region  初始化各UI模块和DOM
 
 			const viewport = new Viewport( editor );
 			document.body.appendChild( viewport.dom );
@@ -109,6 +113,8 @@
 
 			const resizer = new Resizer( editor );
 			document.body.appendChild( resizer.dom );
+
+			//#endregion
 
 			//
 
@@ -164,6 +170,7 @@
 
 				}
 
+				//#region 一些属性变化后触发自动保存（防抖）
 				const signals = editor.signals;
 
 				signals.geometryChanged.add( saveState );
@@ -178,9 +185,11 @@
 				signals.scriptChanged.add( saveState );
 				signals.historyChanged.add( saveState );
 
+				//#endregion
+
 			} );
 
-			//
+			//#region 允许拖拽
 
 			document.addEventListener( 'dragover', function ( event ) {
 
@@ -208,6 +217,7 @@
 				}
 
 			} );
+			//#endregion
 
 			function onWindowResize() {
 
@@ -223,7 +233,8 @@
 
 			let isLoadingFromHash = false;
 			const hash = window.location.hash;
-
+			
+			// 当hash以file=开头时，读取对应文件
 			if ( hash.slice( 1, 6 ) === 'file=' ) {
 
 				const file = hash.slice( 6 );

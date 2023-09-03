@@ -9,6 +9,7 @@ import { SetPositionCommand } from './commands/SetPositionCommand.js';
 import { SetRotationCommand } from './commands/SetRotationCommand.js';
 import { SetScaleCommand } from './commands/SetScaleCommand.js';
 import { SetColorCommand } from './commands/SetColorCommand.js';
+import { UIDatabinding } from './addon/bindings.js';
 
 function SidebarObject( editor ) {
 
@@ -113,8 +114,12 @@ function SidebarObject( editor ) {
 	const objectPositionY = new UINumber().setPrecision( 3 ).setWidth( '50px' ).onChange( update );
 	const objectPositionZ = new UINumber().setPrecision( 3 ).setWidth( '50px' ).onChange( update );
 
+	const bindingPositionX = new UIDatabinding("B").onClick((e) => {
+		console.log("数据绑定！")
+	});
+
 	objectPositionRow.add( new UIText( strings.getKey( 'sidebar/object/position' ) ).setWidth( '90px' ) );
-	objectPositionRow.add( objectPositionX, objectPositionY, objectPositionZ );
+	objectPositionRow.add( objectPositionX, bindingPositionX, objectPositionY, objectPositionZ );
 
 	container.add( objectPositionRow );
 
@@ -665,6 +670,7 @@ function SidebarObject( editor ) {
 	// events
 
 	signals.objectSelected.add( function ( object ) {
+		// 元素选择
 
 		if ( object !== null ) {
 
