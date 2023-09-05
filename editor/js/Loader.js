@@ -65,9 +65,11 @@ function Loader( editor ) {
 	this.loadFile = function ( file, manager ) {
 
 		const filename = file.name;
+		// 获取文件名后缀
 		const extension = filename.split( '.' ).pop().toLowerCase();
 
 		const reader = new FileReader();
+		// 监听文件加载进度
 		reader.addEventListener( 'progress', function ( event ) {
 
 			const size = '(' + Math.floor( event.total / 1000 ).format() + ' KB)';
@@ -76,7 +78,7 @@ function Loader( editor ) {
 			console.log( 'Loading', filename, size, progress );
 
 		} );
-
+		// 根据文件名后缀，在内容加载完后进行指定的处理
 		switch ( extension ) {
 
 			case '3dm':
