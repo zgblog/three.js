@@ -1,5 +1,10 @@
 import { UIPanel, UIBreak, UIText } from './libs/ui.js';
 
+/**
+ * 场景实时信息
+ * @param {*} editor 
+ * @returns 
+ */
 function ViewportInfo( editor ) {
 
 	const signals = editor.signals;

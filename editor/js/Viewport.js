@@ -60,7 +60,7 @@ function Viewport( editor ) {
 	const vr = new VR( editor );
 
 	//
-
+	// 选中时高亮
 	const box = new THREE.Box3();
 
 	const selectionBox = new THREE.Box3Helper( box );

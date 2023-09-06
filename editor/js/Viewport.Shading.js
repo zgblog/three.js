@@ -1,5 +1,9 @@
 import { UISelect } from './libs/ui.js';
-
+/**
+ * 作色方式
+ * @param {*} editor 
+ * @returns 
+ */
 function ViewportShading( editor ) {
 
 	const select = new UISelect();

@@ -1,5 +1,10 @@
 import { UISelect } from './libs/ui.js';
 
+/**
+ * 相机选择
+ * @param {*} editor 
+ * @returns 
+ */
 function ViewportCamera( editor ) {
 
 	const signals = editor.signals;
