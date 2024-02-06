@@ -1,15 +1,12 @@
-import { LinearFilter, LinearMipmapLinearFilter, LinearMipmapNearestFilter, NearestFilter, NearestMipmapLinearFilter, NearestMipmapNearestFilter, RGBAFormat, DepthFormat, DepthStencilFormat, UnsignedShortType, UnsignedIntType, UnsignedInt248Type, FloatType, HalfFloatType, MirroredRepeatWrapping, ClampToEdgeWrapping, RepeatWrapping, UnsignedByteType, _SRGBAFormat, NoColorSpace, LinearSRGBColorSpace, SRGBColorSpace, NeverCompare, AlwaysCompare, LessCompare, LessEqualCompare, EqualCompare, GreaterEqualCompare, GreaterCompare, NotEqualCompare, DisplayP3ColorSpace } from '../../constants.js';
+import { LinearFilter, LinearMipmapLinearFilter, LinearMipmapNearestFilter, NearestFilter, NearestMipmapLinearFilter, NearestMipmapNearestFilter, RGBAFormat, RGB_ETC1_Format, DepthFormat, DepthStencilFormat, UnsignedShortType, UnsignedIntType, UnsignedInt248Type, FloatType, HalfFloatType, MirroredRepeatWrapping, ClampToEdgeWrapping, RepeatWrapping, UnsignedByteType, _SRGBAFormat, NoColorSpace, LinearSRGBColorSpace, NeverCompare, AlwaysCompare, LessCompare, LessEqualCompare, EqualCompare, GreaterEqualCompare, GreaterCompare, NotEqualCompare, SRGBTransfer, LinearTransfer } from '../../constants.js';
 import * as MathUtils from '../../math/MathUtils.js';
 import { ImageUtils } from '../../extras/ImageUtils.js';
 import { createElementNS } from '../../utils.js';
+import { ColorManagement } from '../../math/ColorManagement.js';
 
 function WebGLTextures( _gl, extensions, state, properties, capabilities, utils, info ) {
 
 	const isWebGL2 = capabilities.isWebGL2;
-	const maxTextures = capabilities.maxTextures;
-	const maxCubemapSize = capabilities.maxCubemapSize;
-	const maxTextureSize = capabilities.maxTextureSize;
-	const maxSamples = capabilities.maxSamples;
 	const multisampledRTTExt = extensions.has( 'WEBGL_multisampled_render_to_texture' ) ? extensions.get( 'WEBGL_multisampled_render_to_texture' ) : null;
 	const supportsInvalidateFramebuffer = typeof navigator === 'undefined' ? false : /OculusBrowser/g.test( navigator.userAgent );
 
@@ -176,11 +173,24 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 		}
 
+		if ( glFormat === _gl.RG_INTEGER ) {
+
+			if ( glType === _gl.UNSIGNED_BYTE ) internalFormat = _gl.RG8UI;
+			if ( glType === _gl.UNSIGNED_SHORT ) internalFormat = _gl.RG16UI;
+			if ( glType === _gl.UNSIGNED_INT ) internalFormat = _gl.RG32UI;
+			if ( glType === _gl.BYTE ) internalFormat = _gl.RG8I;
+			if ( glType === _gl.SHORT ) internalFormat = _gl.RG16I;
+			if ( glType === _gl.INT ) internalFormat = _gl.RG32I;
+
+		}
+
 		if ( glFormat === _gl.RGBA ) {
+
+			const transfer = forceLinearTransfer ? LinearTransfer : ColorManagement.getTransfer( colorSpace );
 
 			if ( glType === _gl.FLOAT ) internalFormat = _gl.RGBA32F;
 			if ( glType === _gl.HALF_FLOAT ) internalFormat = _gl.RGBA16F;
-			if ( glType === _gl.UNSIGNED_BYTE ) internalFormat = ( colorSpace === SRGBColorSpace && forceLinearTransfer === false ) ? _gl.SRGB8_ALPHA8 : _gl.RGBA8;
+			if ( glType === _gl.UNSIGNED_BYTE ) internalFormat = ( transfer === SRGBTransfer ) ? _gl.SRGB8_ALPHA8 : _gl.RGBA8;
 			if ( glType === _gl.UNSIGNED_SHORT_4_4_4_4 ) internalFormat = _gl.RGBA4;
 			if ( glType === _gl.UNSIGNED_SHORT_5_5_5_1 ) internalFormat = _gl.RGB5_A1;
 
@@ -426,9 +436,9 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 		const textureUnit = textureUnits;
 
-		if ( textureUnit >= maxTextures ) {
+		if ( textureUnit >= capabilities.maxTextures ) {
 
-			console.warn( 'THREE.WebGLTextures: Trying to use ' + textureUnit + ' texture units while this GPU supports only ' + maxTextures );
+			console.warn( 'THREE.WebGLTextures: Trying to use ' + textureUnit + ' texture units while this GPU supports only ' + capabilities.maxTextures );
 
 		}
 
@@ -568,6 +578,14 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 	function setTextureParameters( textureType, texture, supportsMips ) {
 
+		if ( texture.type === FloatType && extensions.has( 'OES_texture_float_linear' ) === false &&
+			( texture.magFilter === LinearFilter || texture.magFilter === LinearMipmapNearestFilter || texture.magFilter === NearestMipmapLinearFilter || texture.magFilter === LinearMipmapLinearFilter ||
+			texture.minFilter === LinearFilter || texture.minFilter === LinearMipmapNearestFilter || texture.minFilter === NearestMipmapLinearFilter || texture.minFilter === LinearMipmapLinearFilter ) ) {
+
+			console.warn( 'THREE.WebGLRenderer: Unable to use linear filtering with floating point textures. OES_texture_float_linear not supported on this device.' );
+
+		}
+
 		if ( supportsMips ) {
 
 			_gl.texParameteri( textureType, _gl.TEXTURE_WRAP_S, wrappingToGL[ texture.wrapS ] );
@@ -619,8 +637,6 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 		if ( extensions.has( 'EXT_texture_filter_anisotropic' ) === true ) {
 
-			const extension = extensions.get( 'EXT_texture_filter_anisotropic' );
-
 			if ( texture.magFilter === NearestFilter ) return;
 			if ( texture.minFilter !== NearestMipmapLinearFilter && texture.minFilter !== LinearMipmapLinearFilter ) return;
 			if ( texture.type === FloatType && extensions.has( 'OES_texture_float_linear' ) === false ) return; // verify extension for WebGL 1 and WebGL 2
@@ -628,6 +644,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 			if ( texture.anisotropy > 1 || properties.get( texture ).__currentAnisotropy ) {
 
+				const extension = extensions.get( 'EXT_texture_filter_anisotropic' );
 				_gl.texParameterf( textureType, extension.TEXTURE_MAX_ANISOTROPY_EXT, Math.min( texture.anisotropy, capabilities.getMaxAnisotropy() ) );
 				properties.get( texture ).__currentAnisotropy = texture.anisotropy;
 
@@ -735,13 +752,17 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 			state.activeTexture( _gl.TEXTURE0 + slot );
 
+			const workingPrimaries = ColorManagement.getPrimaries( ColorManagement.workingColorSpace );
+			const texturePrimaries = texture.colorSpace === NoColorSpace ? null : ColorManagement.getPrimaries( texture.colorSpace );
+			const unpackConversion = texture.colorSpace === NoColorSpace || workingPrimaries === texturePrimaries ? _gl.NONE : _gl.BROWSER_DEFAULT_WEBGL;
+
 			_gl.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, texture.flipY );
 			_gl.pixelStorei( _gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, texture.premultiplyAlpha );
 			_gl.pixelStorei( _gl.UNPACK_ALIGNMENT, texture.unpackAlignment );
-			_gl.pixelStorei( _gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, _gl.NONE );
+			_gl.pixelStorei( _gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, unpackConversion );
 
 			const needsPowerOfTwo = textureNeedsPowerOfTwo( texture ) && isPowerOfTwo( texture.image ) === false;
-			let image = resizeImage( texture.image, needsPowerOfTwo, false, maxTextureSize );
+			let image = resizeImage( texture.image, needsPowerOfTwo, false, capabilities.maxTextureSize );
 			image = verifyColorSpace( texture, image );
 
 			const supportsMips = isPowerOfTwo( image ) || isWebGL2,
@@ -755,8 +776,9 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 			let mipmap;
 			const mipmaps = texture.mipmaps;
 
-			const useTexStorage = ( isWebGL2 && texture.isVideoTexture !== true );
+			const useTexStorage = ( isWebGL2 && texture.isVideoTexture !== true && glInternalFormat !== RGB_ETC1_Format );
 			const allocateMemory = ( sourceProperties.__version === undefined ) || ( forceUpload === true );
+			const dataReady = source.dataReady;
 			const levels = getMipLevels( texture, image, supportsMips );
 
 			if ( texture.isDepthTexture ) {
@@ -869,7 +891,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 						if ( useTexStorage ) {
 
-							state.texSubImage2D( _gl.TEXTURE_2D, i, 0, 0, mipmap.width, mipmap.height, glFormat, glType, mipmap.data );
+							if ( dataReady ) {
+
+								state.texSubImage2D( _gl.TEXTURE_2D, i, 0, 0, mipmap.width, mipmap.height, glFormat, glType, mipmap.data );
+
+							}
 
 						} else {
 
@@ -891,7 +917,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 						}
 
-						state.texSubImage2D( _gl.TEXTURE_2D, 0, 0, 0, image.width, image.height, glFormat, glType, image.data );
+						if ( dataReady ) {
+
+							state.texSubImage2D( _gl.TEXTURE_2D, 0, 0, 0, image.width, image.height, glFormat, glType, image.data );
+
+						}
 
 					} else {
 
@@ -921,7 +951,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 								if ( useTexStorage ) {
 
-									state.compressedTexSubImage3D( _gl.TEXTURE_2D_ARRAY, i, 0, 0, 0, mipmap.width, mipmap.height, image.depth, glFormat, mipmap.data, 0, 0 );
+									if ( dataReady ) {
+
+										state.compressedTexSubImage3D( _gl.TEXTURE_2D_ARRAY, i, 0, 0, 0, mipmap.width, mipmap.height, image.depth, glFormat, mipmap.data, 0, 0 );
+
+									}
 
 								} else {
 
@@ -939,7 +973,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 							if ( useTexStorage ) {
 
-								state.texSubImage3D( _gl.TEXTURE_2D_ARRAY, i, 0, 0, 0, mipmap.width, mipmap.height, image.depth, glFormat, glType, mipmap.data );
+								if ( dataReady ) {
+
+									state.texSubImage3D( _gl.TEXTURE_2D_ARRAY, i, 0, 0, 0, mipmap.width, mipmap.height, image.depth, glFormat, glType, mipmap.data );
+
+								}
 
 							} else {
 
@@ -969,7 +1007,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 								if ( useTexStorage ) {
 
-									state.compressedTexSubImage2D( _gl.TEXTURE_2D, i, 0, 0, mipmap.width, mipmap.height, glFormat, mipmap.data );
+									if ( dataReady ) {
+
+										state.compressedTexSubImage2D( _gl.TEXTURE_2D, i, 0, 0, mipmap.width, mipmap.height, glFormat, mipmap.data );
+
+									}
 
 								} else {
 
@@ -987,7 +1029,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 							if ( useTexStorage ) {
 
-								state.texSubImage2D( _gl.TEXTURE_2D, i, 0, 0, mipmap.width, mipmap.height, glFormat, glType, mipmap.data );
+								if ( dataReady ) {
+
+									state.texSubImage2D( _gl.TEXTURE_2D, i, 0, 0, mipmap.width, mipmap.height, glFormat, glType, mipmap.data );
+
+								}
 
 							} else {
 
@@ -1011,7 +1057,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 					}
 
-					state.texSubImage3D( _gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, image.width, image.height, image.depth, glFormat, glType, image.data );
+					if ( dataReady ) {
+
+						state.texSubImage3D( _gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, image.width, image.height, image.depth, glFormat, glType, image.data );
+
+					}
 
 				} else {
 
@@ -1029,7 +1079,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 					}
 
-					state.texSubImage3D( _gl.TEXTURE_3D, 0, 0, 0, 0, image.width, image.height, image.depth, glFormat, glType, image.data );
+					if ( dataReady ) {
+
+						state.texSubImage3D( _gl.TEXTURE_3D, 0, 0, 0, 0, image.width, image.height, image.depth, glFormat, glType, image.data );
+
+					}
 
 				} else {
 
@@ -1084,7 +1138,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 						if ( useTexStorage ) {
 
-							state.texSubImage2D( _gl.TEXTURE_2D, i, 0, 0, glFormat, glType, mipmap );
+							if ( dataReady ) {
+
+								state.texSubImage2D( _gl.TEXTURE_2D, i, 0, 0, glFormat, glType, mipmap );
+
+							}
 
 						} else {
 
@@ -1106,7 +1164,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 						}
 
-						state.texSubImage2D( _gl.TEXTURE_2D, 0, 0, 0, glFormat, glType, image );
+						if ( dataReady ) {
+
+							state.texSubImage2D( _gl.TEXTURE_2D, 0, 0, 0, glFormat, glType, image );
+
+						}
 
 					} else {
 
@@ -1149,10 +1211,14 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 			state.activeTexture( _gl.TEXTURE0 + slot );
 
+			const workingPrimaries = ColorManagement.getPrimaries( ColorManagement.workingColorSpace );
+			const texturePrimaries = texture.colorSpace === NoColorSpace ? null : ColorManagement.getPrimaries( texture.colorSpace );
+			const unpackConversion = texture.colorSpace === NoColorSpace || workingPrimaries === texturePrimaries ? _gl.NONE : _gl.BROWSER_DEFAULT_WEBGL;
+
 			_gl.pixelStorei( _gl.UNPACK_FLIP_Y_WEBGL, texture.flipY );
 			_gl.pixelStorei( _gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, texture.premultiplyAlpha );
 			_gl.pixelStorei( _gl.UNPACK_ALIGNMENT, texture.unpackAlignment );
-			_gl.pixelStorei( _gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, _gl.NONE );
+			_gl.pixelStorei( _gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, unpackConversion );
 
 			const isCompressed = ( texture.isCompressedTexture || texture.image[ 0 ].isCompressedTexture );
 			const isDataTexture = ( texture.image[ 0 ] && texture.image[ 0 ].isDataTexture );
@@ -1163,7 +1229,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 				if ( ! isCompressed && ! isDataTexture ) {
 
-					cubeImage[ i ] = resizeImage( texture.image[ i ], false, true, maxCubemapSize );
+					cubeImage[ i ] = resizeImage( texture.image[ i ], false, true, capabilities.maxCubemapSize );
 
 				} else {
 
@@ -1183,6 +1249,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 			const useTexStorage = ( isWebGL2 && texture.isVideoTexture !== true );
 			const allocateMemory = ( sourceProperties.__version === undefined ) || ( forceUpload === true );
+			const dataReady = source.dataReady;
 			let levels = getMipLevels( texture, image, supportsMips );
 
 			setTextureParameters( _gl.TEXTURE_CUBE_MAP, texture, supportsMips );
@@ -1211,7 +1278,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 								if ( useTexStorage ) {
 
-									state.compressedTexSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, j, 0, 0, mipmap.width, mipmap.height, glFormat, mipmap.data );
+									if ( dataReady ) {
+
+										state.compressedTexSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, j, 0, 0, mipmap.width, mipmap.height, glFormat, mipmap.data );
+
+									}
 
 								} else {
 
@@ -1229,7 +1300,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 							if ( useTexStorage ) {
 
-								state.texSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, j, 0, 0, mipmap.width, mipmap.height, glFormat, glType, mipmap.data );
+								if ( dataReady ) {
+
+									state.texSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, j, 0, 0, mipmap.width, mipmap.height, glFormat, glType, mipmap.data );
+
+								}
 
 							} else {
 
@@ -1265,7 +1340,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 						if ( useTexStorage ) {
 
-							state.texSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, 0, 0, cubeImage[ i ].width, cubeImage[ i ].height, glFormat, glType, cubeImage[ i ].data );
+							if ( dataReady ) {
+
+								state.texSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, 0, 0, cubeImage[ i ].width, cubeImage[ i ].height, glFormat, glType, cubeImage[ i ].data );
+
+							}
 
 						} else {
 
@@ -1280,7 +1359,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 							if ( useTexStorage ) {
 
-								state.texSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, j + 1, 0, 0, mipmapImage.width, mipmapImage.height, glFormat, glType, mipmapImage.data );
+								if ( dataReady ) {
+
+									state.texSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, j + 1, 0, 0, mipmapImage.width, mipmapImage.height, glFormat, glType, mipmapImage.data );
+
+								}
 
 							} else {
 
@@ -1294,7 +1377,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 						if ( useTexStorage ) {
 
-							state.texSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, 0, 0, glFormat, glType, cubeImage[ i ] );
+							if ( dataReady ) {
+
+								state.texSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, 0, 0, glFormat, glType, cubeImage[ i ] );
+
+							}
 
 						} else {
 
@@ -1308,7 +1395,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 							if ( useTexStorage ) {
 
-								state.texSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, j + 1, 0, 0, glFormat, glType, mipmap.image[ i ] );
+								if ( dataReady ) {
+
+									state.texSubImage2D( _gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, j + 1, 0, 0, glFormat, glType, mipmap.image[ i ] );
+
+								}
 
 							} else {
 
@@ -1392,7 +1483,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 		if ( renderTarget.depthBuffer && ! renderTarget.stencilBuffer ) {
 
-			let glInternalFormat = _gl.DEPTH_COMPONENT16;
+			let glInternalFormat = ( isWebGL2 === true ) ? _gl.DEPTH_COMPONENT24 : _gl.DEPTH_COMPONENT16;
 
 			if ( isMultisample || useMultisampledRTT( renderTarget ) ) {
 
@@ -1994,7 +2085,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 	function getRenderTargetSamples( renderTarget ) {
 
-		return Math.min( maxSamples, renderTarget.samples );
+		return Math.min( capabilities.maxSamples, renderTarget.samples );
 
 	}
 
@@ -2033,7 +2124,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 			// sRGB
 
-			if ( colorSpace === SRGBColorSpace || colorSpace === DisplayP3ColorSpace ) {
+			if ( ColorManagement.getTransfer( colorSpace ) === SRGBTransfer ) {
 
 				if ( isWebGL2 === false ) {
 
